@@ -13,12 +13,12 @@ Just copy json.hpp and json.cpp into required location
 API
 ---
 
-    json::value * json::parse (const char * json, size_t length);
+    const json::value * json::parse (const char * json, size_t length);
 
-    json::value * json::parse (const json::settings & settings,
-                               const char * json,
-                               size_t length
-                               char * error);
+    const json::value * json::parse (const json::settings & settings,
+                                     const char * json,
+                                     size_t length
+                                     char * error);
 
 Buffer `error` must be at least 128 characters long, otherwise buffer overflow may occur when reporting parsing errors
 

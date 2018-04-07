@@ -32,6 +32,7 @@
 #define _JSON_HPP
 
 #include <cstdint>
+#include <type_traits>
 
 namespace json {
 
@@ -61,13 +62,14 @@ namespace json {
     struct value;
 
     struct object_entry {
-        char *name;
+        const char *name;
         unsigned int name_length;
-        json::value *value;
+        const json::value *value;
     };
+    static_assert(std::is_standard_layout_v<object_entry>);
 
     struct value {
-        value *parent;
+        const value *parent;
         json::type type;
 
         union {
@@ -77,23 +79,22 @@ namespace json {
 
             struct {
                 unsigned int length;
-                char *ptr; // null terminated
+                const char *ptr; // null terminated
             } string;
 
             struct {
                 unsigned int length;
-                object_entry *values;
+                const object_entry *values;
             } object;
 
             struct {
                 unsigned int length;
-                value **values;
+                const value *const *values;
             } array;
         } u;
 
         union {
-            value *next_alloc;
-            void *object_mem;
+            const void *reserved;
         } _reserved;
 
 #ifdef JSON_TRACK_SOURCE
@@ -101,14 +102,14 @@ namespace json {
         unsigned int line, col;
 #endif
     };
+    static_assert(std::is_standard_layout_v<value>);
 
-    value *parse(const char *json, std::size_t length) noexcept;
+    const value *parse(const char *json, std::size_t length) noexcept;
     constexpr static int error_max = 128;
-    value *parse(const settings& settings, const char *json, std::size_t length, char *error) noexcept;
+    const value *parse(const settings &settings, const char *json, std::size_t length, char *error) noexcept;
 
-    void value_free(value *) noexcept;
-    // Not usually necessary, unless you used a custom mem_alloc and now want to use a custom mem_free.
-    void value_free(const settings& settings, value *) noexcept;
+    void value_free(const value *) noexcept;
+    void value_free(const settings &settings, const value *) noexcept;
 
 } // namespace json
 

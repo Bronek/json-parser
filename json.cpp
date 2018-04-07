@@ -37,6 +37,54 @@
 #include <limits>
 
 namespace {
+    struct json_value;
+
+    struct object_entry {
+        char *name;
+        unsigned int name_length;
+        json_value *value;
+    };
+    static_assert(std::is_standard_layout_v<object_entry>);
+
+    struct json_value {
+        json_value *parent;
+        json::type type;
+
+        union {
+            bool boolean;
+            int64_t integer;
+            double dbl;
+
+            struct {
+                unsigned int length;
+                char *ptr; // null terminated
+            } string;
+
+            struct {
+                unsigned int length;
+                object_entry *values;
+            } object;
+
+            struct {
+                unsigned int length;
+                json_value **values;
+            } array;
+        } u;
+
+        union {
+            void *object_mem;
+            json_value *next_alloc;
+        } _reserved;
+
+#ifdef JSON_TRACK_SOURCE
+        // Location of the value in the source JSON
+        unsigned int line, col;
+#endif
+    };
+    static_assert(std::is_standard_layout_v<json_value>);
+    static_assert(sizeof(json_value) == sizeof(json::value));
+    // no assert available to enforce that these two types are layout compatible
+
     constexpr unsigned char hex_value(char c) noexcept {
         if (c >= '0' && c <= '9')
             return c - '0';
@@ -87,10 +135,10 @@ namespace {
     }
 
     bool new_value(json_state *state,
-                   json::value **top, json::value **root, json::value **alloc,
+                   json_value **top, json_value **root, json_value **alloc,
                    json::type type) noexcept
     {
-        json::value *value;
+        json_value *value;
         int values_size;
 
         if (!state->first_pass) {
@@ -105,8 +153,8 @@ namespace {
                     if (value->u.array.length == 0)
                         break;
 
-                    if (!(value->u.array.values = (json::value **) json_alloc
-                            (state, value->u.array.length * sizeof(json::value *), false))) {
+                    if (!(value->u.array.values = (json_value **) json_alloc
+                            (state, value->u.array.length * sizeof(json_value *), false))) {
                         return false;
                     }
 
@@ -119,7 +167,7 @@ namespace {
 
                     values_size = sizeof(*value->u.object.values) * value->u.object.length;
 
-                    if (!(value->u.object.values = (json::object_entry *) json_alloc
+                    if (!(value->u.object.values = (object_entry *) json_alloc
                             (state, values_size + ((unsigned long) value->u.object.values), false))) {
                         return false;
                     }
@@ -145,8 +193,8 @@ namespace {
             return true;
         }
 
-        if (!(value = (json::value *) json_alloc
-                (state, sizeof(json::value) + state->settings.value_extra, true))) {
+        if (!(value = (json_value *) json_alloc
+                (state, sizeof(value) + state->settings.value_extra, true))) {
             return false;
         }
 
@@ -195,10 +243,10 @@ namespace {
 #define LINE_AND_COL \
     state.cur_line, state.cur_col
 
-json::value * json::parse(const json::settings& settings,
-                          const char * json,
-                          size_t length,
-                          char * error_buf) noexcept
+const json::value * json::parse(const json::settings & settings,
+                                const char * json,
+                                size_t length,
+                                char * error_buf) noexcept
 {
     // Skip UTF-8 BOM
     if (length >= 3 && ((unsigned char) json[0]) == 0xEF
@@ -225,7 +273,7 @@ json::value * json::parse(const json::settings& settings,
     state.uint_max = std::numeric_limits<decltype(state.uint_max)>::max() - 8;
     state.ulong_max = std::numeric_limits<decltype(state.ulong_max)>::max() - 8;
 
-    json::value *top, *root, *alloc = nullptr;
+    json_value *top, *root, *alloc = nullptr;
     for (state.first_pass = 1; state.first_pass >= 0; --state.first_pass) {
         top = root = nullptr;
         long flags = flag_seek_value;
@@ -778,7 +826,7 @@ json::value * json::parse(const json::settings& settings,
                     flags |= flag_seek_value;
 
                 if (!state.first_pass) {
-                    json::value *parent = top->parent;
+                    json_value *parent = top->parent;
 
                     switch (parent->type) {
                         case json_object:
@@ -807,7 +855,7 @@ json::value * json::parse(const json::settings& settings,
         alloc = root;
     }
 
-    return root;
+    return reinterpret_cast<json::value*>(root);
 
     e_unknown_value:
     std::sprintf(error, "%d:%d: Unknown value", LINE_AND_COL);
@@ -839,23 +887,24 @@ json::value * json::parse(const json::settings& settings,
     }
 
     if (!state.first_pass)
-        json::value_free(state.settings, root);
+        json::value_free(state.settings, reinterpret_cast<json::value*>(root));
 
     return nullptr;
 }
 
-json::value * json::parse(const char * json, size_t length) noexcept {
+const json::value * json::parse(const char * json, size_t length) noexcept {
     const json::settings settings = { 0 };
     return json::parse(settings, json, length, 0);
 }
 
-void json::value_free(const json::settings& settings, json::value * value) noexcept
+void json::value_free(const json::settings & settings, const json::value * val) noexcept
 {
-    if (!value)
+    if (!val)
         return;
 
+    json_value* value = reinterpret_cast<json_value*>(const_cast<json::value*>(val));
     value->parent = nullptr;
-    json::value *cur_value;
+    json_value *cur_value;
     while (value) {
         switch (value->type) {
             case json_array:
@@ -890,7 +939,7 @@ void json::value_free(const json::settings& settings, json::value * value) noexc
     }
 }
 
-void json::value_free(json::value * value) noexcept {
+void json::value_free(const json::value * value) noexcept {
     json::settings settings = {0};
     settings.mem_free = default_free;
     json::value_free(settings, value);
