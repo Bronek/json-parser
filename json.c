@@ -29,22 +29,11 @@
 
 #include "json.h"
 
-#ifdef _MSC_VER
-   #ifndef _CRT_SECURE_NO_WARNINGS
-      #define _CRT_SECURE_NO_WARNINGS
-   #endif
-#endif
-
-const struct _json_value json_value_none;
-
 #include <stdio.h>
-#include <string.h>
 #include <ctype.h>
 #include <math.h>
 
-typedef unsigned int json_uchar;
-
-static unsigned char hex_value (json_char c)
+static unsigned char hex_value (char c)
 {
    if (isdigit(c))
       return c - '0';
@@ -70,7 +59,7 @@ typedef struct
    json_settings settings;
    int first_pass;
 
-   const json_char * ptr;
+   const char * ptr;
    unsigned int cur_line, cur_col;
 
 } json_state;
@@ -150,8 +139,8 @@ static int new_value (json_state * state,
 
          case json_string:
 
-            if (! (value->u.string.ptr = (json_char *) json_alloc
-               (state, (value->u.string.length + 1) * sizeof (json_char), 0)) )
+            if (! (value->u.string.ptr = (char *) json_alloc
+               (state, (value->u.string.length + 1) * sizeof (char), 0)) )
             {
                return 0;
             }
@@ -161,7 +150,7 @@ static int new_value (json_state * state,
 
          default:
             break;
-      };
+      }
 
       return 1;
    }
@@ -191,21 +180,21 @@ static int new_value (json_state * state,
    return 1;
 }
 
-#define whitespace \
+#define WHITESPACE \
    case '\n': ++ state.cur_line;  state.cur_col = 0; \
    case ' ': case '\t': case '\r'
 
-#define string_add(b)  \
-   do { if (!state.first_pass) string [string_length] = b;  ++ string_length; } while (0);
+#define STRING_ADD(b)  \
+   do { if (!state.first_pass) string [string_length] = b;  ++ string_length; } while (0)
 
-#define line_and_col \
+#define LINE_AND_COL \
    state.cur_line, state.cur_col
 
 static const long
    flag_next             = 1 << 0,
    flag_reproc           = 1 << 1,
    flag_need_comma       = 1 << 2,
-   flag_seek_value       = 1 << 3, 
+   flag_seek_value       = 1 << 3,
    flag_escaped          = 1 << 4,
    flag_string           = 1 << 5,
    flag_need_colon       = 1 << 6,
@@ -219,17 +208,17 @@ static const long
    flag_block_comment    = 1 << 14;
 
 json_value * json_parse_ex (json_settings * settings,
-                            const json_char * json,
+                            const char * json,
                             size_t length,
                             char * error_buf)
 {
-   json_char error [json_error_max];
-   const json_char * end;
+   char error [json_error_max];
+   const char * end;
    json_value * top, * root, * alloc = 0;
    json_state state = { 0 };
    long flags;
    long num_digits = 0, num_e = 0;
-   json_int_t num_fraction = 0;
+   int64_t num_fraction = 0;
 
    /* Skip UTF-8 BOM
     */
@@ -260,9 +249,9 @@ json_value * json_parse_ex (json_settings * settings,
 
    for (state.first_pass = 1; state.first_pass >= 0; -- state.first_pass)
    {
-      json_uchar uchar;
+      uint32_t uchar;
       unsigned char uc_b1, uc_b2, uc_b3, uc_b4;
-      json_char * string = 0;
+      char * string = 0;
       unsigned int string_length = 0;
 
       top = root = 0;
@@ -272,12 +261,12 @@ json_value * json_parse_ex (json_settings * settings,
 
       for (state.ptr = json ;; ++ state.ptr)
       {
-         json_char b = (state.ptr == end ? 0 : *state.ptr);
-         
+         char b = (state.ptr == end ? 0 : *state.ptr);
+
          if (flags & flag_string)
          {
             if (!b)
-            {  sprintf (error, "Unexpected EOF in string (at %d:%d)", line_and_col);
+            {  sprintf (error, "Unexpected EOF in string (at %d:%d)", LINE_AND_COL);
                goto e_failed;
             }
 
@@ -290,20 +279,20 @@ json_value * json_parse_ex (json_settings * settings,
 
                switch (b)
                {
-                  case 'b':  string_add ('\b');  break;
-                  case 'f':  string_add ('\f');  break;
-                  case 'n':  string_add ('\n');  break;
-                  case 'r':  string_add ('\r');  break;
-                  case 't':  string_add ('\t');  break;
+                  case 'b':  STRING_ADD ('\b');  break;
+                  case 'f':  STRING_ADD ('\f');  break;
+                  case 'n':  STRING_ADD ('\n');  break;
+                  case 'r':  STRING_ADD ('\r');  break;
+                  case 't':  STRING_ADD ('\t');  break;
                   case 'u':
 
-                    if (end - state.ptr <= 4 || 
+                    if (end - state.ptr <= 4 ||
                         (uc_b1 = hex_value (*++ state.ptr)) == 0xFF ||
                         (uc_b2 = hex_value (*++ state.ptr)) == 0xFF ||
                         (uc_b3 = hex_value (*++ state.ptr)) == 0xFF ||
                         (uc_b4 = hex_value (*++ state.ptr)) == 0xFF)
                     {
-                        sprintf (error, "Invalid character value `%c` (at %d:%d)", b, line_and_col);
+                        sprintf (error, "Invalid character value `%c` (at %d:%d)", b, LINE_AND_COL);
                         goto e_failed;
                     }
 
@@ -312,28 +301,28 @@ json_value * json_parse_ex (json_settings * settings,
                     uchar = (uc_b1 << 8) | uc_b2;
 
                     if ((uchar & 0xF800) == 0xD800) {
-                        json_uchar uchar2;
-                        
+                        uint32_t uchar2;
+
                         if (end - state.ptr <= 6 || (*++ state.ptr) != '\\' || (*++ state.ptr) != 'u' ||
                             (uc_b1 = hex_value (*++ state.ptr)) == 0xFF ||
                             (uc_b2 = hex_value (*++ state.ptr)) == 0xFF ||
                             (uc_b3 = hex_value (*++ state.ptr)) == 0xFF ||
                             (uc_b4 = hex_value (*++ state.ptr)) == 0xFF)
                         {
-                            sprintf (error, "Invalid character value `%c` (at %d:%d)", b, line_and_col);
+                            sprintf (error, "Invalid character value `%c` (at %d:%d)", b, LINE_AND_COL);
                             goto e_failed;
                         }
 
                         uc_b1 = (uc_b1 << 4) | uc_b2;
                         uc_b2 = (uc_b3 << 4) | uc_b4;
                         uchar2 = (uc_b1 << 8) | uc_b2;
-                        
+
                         uchar = 0x010000 | ((uchar & 0x3FF) << 10) | (uchar2 & 0x3FF);
                     }
 
-                    if (sizeof (json_char) >= sizeof (json_uchar) || (uchar <= 0x7F))
+                    if (uchar <= 0x7F)
                     {
-                       string_add ((json_char) uchar);
+                       STRING_ADD ((char) uchar);
                        break;
                     }
 
@@ -357,7 +346,7 @@ json_value * json_parse_ex (json_settings * settings,
                            string [string_length ++] = 0x80 | ((uchar >> 6) & 0x3F);
                            string [string_length ++] = 0x80 | (uchar & 0x3F);
                         }
-                        
+
                         break;
                     }
 
@@ -373,8 +362,8 @@ json_value * json_parse_ex (json_settings * settings,
                     break;
 
                   default:
-                     string_add (b);
-               };
+                     STRING_ADD (b);
+               }
 
                continue;
             }
@@ -405,16 +394,16 @@ json_value * json_parse_ex (json_settings * settings,
                   case json_object:
 
                      if (state.first_pass)
-                        (*(json_char **) &top->u.object.values) += string_length + 1;
+                        (*(char **) &top->u.object.values) += string_length + 1;
                      else
-                     {  
+                     {
                         top->u.object.values [top->u.object.length].name
-                           = (json_char *) top->_reserved.object_mem;
+                           = (char *) top->_reserved.object_mem;
 
                         top->u.object.values [top->u.object.length].name_length
                            = string_length;
 
-                        (*(json_char **) &top->_reserved.object_mem) += string_length + 1;
+                        (*(char **) &top->_reserved.object_mem) += string_length + 1;
                      }
 
                      flags |= flag_seek_value | flag_need_colon;
@@ -422,11 +411,11 @@ json_value * json_parse_ex (json_settings * settings,
 
                   default:
                      break;
-               };
+               }
             }
             else
             {
-               string_add (b);
+               STRING_ADD (b);
                continue;
             }
          }
@@ -449,7 +438,7 @@ json_value * json_parse_ex (json_settings * settings,
                if (flags & flag_block_comment)
                {
                   if (!b)
-                  {  sprintf (error, "%d:%d: Unexpected EOF in block comment", line_and_col);
+                  {  sprintf (error, "%d:%d: Unexpected EOF in block comment", LINE_AND_COL);
                      goto e_failed;
                   }
 
@@ -465,12 +454,12 @@ json_value * json_parse_ex (json_settings * settings,
             else if (b == '/')
             {
                if (! (flags & (flag_seek_value | flag_done)) && top->type != json_object)
-               {  sprintf (error, "%d:%d: Comment not allowed here", line_and_col);
+               {  sprintf (error, "%d:%d: Comment not allowed here", LINE_AND_COL);
                   goto e_failed;
                }
 
                if (++ state.ptr == end)
-               {  sprintf (error, "%d:%d: EOF unexpected", line_and_col);
+               {  sprintf (error, "%d:%d: EOF unexpected", LINE_AND_COL);
                   goto e_failed;
                }
 
@@ -485,9 +474,9 @@ json_value * json_parse_ex (json_settings * settings,
                      continue;
 
                   default:
-                     sprintf (error, "%d:%d: Unexpected `%c` in comment opening sequence", line_and_col, b);
+                     sprintf (error, "%d:%d: Unexpected `%c` in comment opening sequence", LINE_AND_COL, b);
                      goto e_failed;
-               };
+               }
             }
          }
 
@@ -498,23 +487,23 @@ json_value * json_parse_ex (json_settings * settings,
 
             switch (b)
             {
-               whitespace:
+               WHITESPACE:
                   continue;
 
                default:
 
                   sprintf (error, "%d:%d: Trailing garbage: `%c`",
-                           state.cur_line, state.cur_col, b);
+                           LINE_AND_COL, b);
 
                   goto e_failed;
-            };
+            }
          }
 
          if (flags & flag_seek_value)
          {
             switch (b)
             {
-               whitespace:
+               WHITESPACE:
                   continue;
 
                case ']':
@@ -522,7 +511,7 @@ json_value * json_parse_ex (json_settings * settings,
                   if (top && top->type == json_array)
                      flags = (flags & ~ (flag_need_comma | flag_seek_value)) | flag_next;
                   else
-                  {  sprintf (error, "%d:%d: Unexpected ]", line_and_col);
+                  {  sprintf (error, "%d:%d: Unexpected ]", LINE_AND_COL);
                      goto e_failed;
                   }
 
@@ -539,7 +528,7 @@ json_value * json_parse_ex (json_settings * settings,
                      else
                      {
                         sprintf (error, "%d:%d: Expected , before %c",
-                                 state.cur_line, state.cur_col, b);
+                                 LINE_AND_COL, b);
 
                         goto e_failed;
                      }
@@ -552,9 +541,9 @@ json_value * json_parse_ex (json_settings * settings,
                         continue;
                      }
                      else
-                     { 
+                     {
                         sprintf (error, "%d:%d: Expected : before %c",
-                                 state.cur_line, state.cur_col, b);
+                                 LINE_AND_COL, b);
 
                         goto e_failed;
                      }
@@ -679,37 +668,37 @@ json_value * json_parse_ex (json_settings * settings,
                            continue;
                         }
                         else
-                        {  sprintf (error, "%d:%d: Unexpected %c when seeking value", line_and_col, b);
+                        {  sprintf (error, "%d:%d: Unexpected %c when seeking value", LINE_AND_COL, b);
                            goto e_failed;
                         }
-                  };
-            };
+                  }
+            }
          }
          else
          {
             switch (top->type)
             {
             case json_object:
-               
+
                switch (b)
                {
-                  whitespace:
+                  WHITESPACE:
                      continue;
 
                   case '"':
 
                      if (flags & flag_need_comma)
-                     {  sprintf (error, "%d:%d: Expected , before \"", line_and_col);
+                     {  sprintf (error, "%d:%d: Expected , before \"", LINE_AND_COL);
                         goto e_failed;
                      }
 
                      flags |= flag_string;
 
-                     string = (json_char *) top->_reserved.object_mem;
+                     string = (char *) top->_reserved.object_mem;
                      string_length = 0;
 
                      break;
-                  
+
                   case '}':
 
                      flags = (flags & ~ flag_need_comma) | flag_next;
@@ -724,9 +713,9 @@ json_value * json_parse_ex (json_settings * settings,
                      }
 
                   default:
-                     sprintf (error, "%d:%d: Unexpected `%c` in object", line_and_col, b);
+                     sprintf (error, "%d:%d: Unexpected `%c` in object", LINE_AND_COL, b);
                      goto e_failed;
-               };
+               }
 
                break;
 
@@ -742,7 +731,7 @@ json_value * json_parse_ex (json_settings * settings,
                      if (! (flags & flag_num_e))
                      {
                         if (flags & flag_num_zero)
-                        {  sprintf (error, "%d:%d: Unexpected `0` before `%c`", line_and_col, b);
+                        {  sprintf (error, "%d:%d: Unexpected `0` before `%c`", LINE_AND_COL, b);
                            goto e_failed;
                         }
 
@@ -779,7 +768,7 @@ json_value * json_parse_ex (json_settings * settings,
                else if (b == '.' && top->type == json_integer)
                {
                   if (!num_digits)
-                  {  sprintf (error, "%d:%d: Expected digit before `.`", line_and_col);
+                  {  sprintf (error, "%d:%d: Expected digit before `.`", LINE_AND_COL);
                      goto e_failed;
                   }
 
@@ -795,7 +784,7 @@ json_value * json_parse_ex (json_settings * settings,
                   if (top->type == json_double)
                   {
                      if (!num_digits)
-                     {  sprintf (error, "%d:%d: Expected digit after `.`", line_and_col);
+                     {  sprintf (error, "%d:%d: Expected digit after `.`", LINE_AND_COL);
                         goto e_failed;
                      }
 
@@ -821,7 +810,7 @@ json_value * json_parse_ex (json_settings * settings,
                else
                {
                   if (!num_digits)
-                  {  sprintf (error, "%d:%d: Expected digit after `e`", line_and_col);
+                  {  sprintf (error, "%d:%d: Expected digit after `e`", LINE_AND_COL);
                      goto e_failed;
                   }
 
@@ -842,7 +831,7 @@ json_value * json_parse_ex (json_settings * settings,
 
             default:
                break;
-            };
+            }
          }
 
          if (flags & flag_reproc)
@@ -865,7 +854,7 @@ json_value * json_parse_ex (json_settings * settings,
 
             if (top->parent->type == json_array)
                flags |= flag_seek_value;
-               
+
             if (!state.first_pass)
             {
                json_value * parent = top->parent;
@@ -888,7 +877,7 @@ json_value * json_parse_ex (json_settings * settings,
 
                   default:
                      break;
-               };
+               }
             }
 
             if ( (++ top->parent->u.array.length) > state.uint_max)
@@ -907,7 +896,7 @@ json_value * json_parse_ex (json_settings * settings,
 
 e_unknown_value:
 
-   sprintf (error, "%d:%d: Unknown value", line_and_col);
+   sprintf (error, "%d:%d: Unknown value", LINE_AND_COL);
    goto e_failed;
 
 e_alloc_failure:
@@ -917,7 +906,7 @@ e_alloc_failure:
 
 e_overflow:
 
-   sprintf (error, "%d:%d: Too long (caught overflow)", line_and_col);
+   sprintf (error, "%d:%d: Too long (caught overflow)", LINE_AND_COL);
    goto e_failed;
 
 e_failed:
@@ -946,7 +935,7 @@ e_failed:
    return 0;
 }
 
-json_value * json_parse (const json_char * json, size_t length)
+json_value * json_parse (const char * json, size_t length)
 {
    json_settings settings = { 0 };
    return json_parse_ex (&settings, json, length, 0);
@@ -994,7 +983,7 @@ void json_value_free_ex (json_settings * settings, json_value * value)
 
          default:
             break;
-      };
+      }
 
       cur_value = value;
       value = value->parent;
