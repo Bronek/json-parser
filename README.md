@@ -1,33 +1,26 @@
-Very low footprint JSON parser written in portable ANSI C.
+Very low footprint JSON parser written in a subset of C++ , forked from https://github.com/udp/json-parser
 
-* BSD licensed with no dependencies (i.e. just drop the C file into your project)
+* BSD licensed with no dependencies (i.e. just drop the files into your project)
 * Never recurses or allocates more memory than it needs
-* Very simple API with operator sugar for C++
-
-[![Build Status](https://secure.travis-ci.org/udp/json-parser.png)](http://travis-ci.org/udp/json-parser)
-
-_Want to serialize?  Check out [json-builder](https://github.com/udp/json-builder)!_
+* Very simple API
 
 Installing
 ----------
 
-There is now a makefile which will produce a libjsonparser static and dynamic library.  However, this
-is _not_ required to build json-parser, and the source files (`json.c` and `json.h`) should be happy
-in any build system you already have in place.
+Just copy json.hpp and json.cpp into required location
 
 
 API
 ---
 
-    json_value * json_parse (const json_char * json,
-                             size_t length);
+    json::value * json::parse (const char * json, size_t length);
 
-    json_value * json_parse_ex (json_settings * settings,
-                                const json_char * json,
-                                size_t length,
-                                char * error);
+    json::value * json::parse (const json::settings & settings,
+                               const char * json,
+                               size_t length
+                               char * error);
 
-    void json_value_free (json_value *);
+Buffer `error` must be at least 128 characters long, otherwise buffer overflow may occur when reporting parsing errors
 
 The `type` field of `json_value` is one of:
 
@@ -53,7 +46,7 @@ This is useful for application-level error reporting.
 Runtime Options
 ---------------
 
-    settings |= json_enable_comments;
+    settings.allow_comments = true;
 
 Enables C-style `// line` and `/* block */` comments.
 
@@ -69,29 +62,3 @@ Custom allocator routines.  If NULL, the default `malloc` and `free` will be use
 
 The `user_data` pointer will be forwarded from `json_settings` to allow application
 context to be passed.
-
-
-Changes in version 1.1.0
-------------------------
-
-* UTF-8 byte order marks are now skipped if present
-
-* Allows cross-compilation by honoring --host if given (@wkz)
-
-* Maximum size for error buffer is now exposed in header (@LB--)
-
-* GCC warning for `static` after `const` fixed (@batrick)
-
-* Optional support for C-style line and block comments added (@Jin-W-FS)
-
-* `name_length` field added to object values 
-
-* It is now possible to retrieve the source line/column number of a parsed `json_value` when `JSON_TRACK_SOURCE` is enabled
-
-* The application may now extend `json_value` using the `value_extra` setting
-
-* Un-ambiguate pow call in the case of C++ overloaded pow (@fcartegnie)
-
-* Fix null pointer de-reference when a non-existing array is closed and no root value is present
-
-
